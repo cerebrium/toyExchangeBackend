@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/joho/godotenv"
+	"github.com/twinj/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -23,6 +24,15 @@ type User struct {
 	ID       uint16 `json:"_id"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type TokenDetails struct {
+	AccessToken  string
+	RefreshToken string
+	AccessUuid   string
+	RefreshUuid  string
+	AtExpires    int64
+	RtExpires    int64
 }
 
 // use godot package to load/read the .env file and
@@ -75,37 +85,76 @@ func getMongoDbCollection(DbName string, CollectionName string) (*mongo.Collecti
 }
 
 // function to create token
-func CreateToken(userid uint64) (string, error) {
+func CreateToken(userid uint64) (*TokenDetails, error) {
+
+	// ----- env vars ------//
+	// grab the access secret
+	dotenvAcces := goDotEnvVariable("ACCESS_SECRET")
+
+	// grab the refresh secret
+	dotenvRefresh := goDotEnvVariable("REFRESH_SECRET")
+
+	// ------- make the tokenDetails -------//
+
+	// instantiate a pointer to the token details struct
+	td := &TokenDetails{}
+
+	// if the toek is going to expire, add another 15 minutes
+	td.AtExpires = time.Now().Add(time.Minute * 15).Unix()
+
+	// change the uuid for the new token
+	td.AccessUuid = uuid.NewV4().String()
+
+	// declaring the refresh token expiration time
+	td.RtExpires = time.Now().Add(time.Hour * 24 * 7).Unix()
+
+	// declaring the uuid for the refresh token
+	td.RefreshUuid = uuid.NewV4().String()
+
+	// create the error
 	var err error
 
-	// grab the secret
-	dotenv := goDotEnvVariable("ACCESS_SECRET")
+	// -------------- Creating Access Token ------------------ //
 
-	// instantiate the map
+	// instantiate the struct
 	atClaims := jwt.MapClaims{}
 
-	// set the map values
+	// add the claims to the 3rd party struct
 	atClaims["authorized"] = true
-
-	// uuid passed in
+	atClaims["access_uuid"] = td.AccessUuid
 	atClaims["user_id"] = userid
+	atClaims["exp"] = td.AtExpires
 
-	// how long until the token expires
-	atClaims["exp"] = time.Now().Add(time.Minute * 15).Unix()
-
-	// makes the configuration for the token using hsa256 and claims
+	// with hsa signiture and claims
 	at := jwt.NewWithClaims(jwt.SigningMethodHS256, atClaims)
 
-	// makes the token sighned with the access secret
-	token, err := at.SignedString([]byte(dotenv))
+	// create the object with the secret key to the token
+	td.AccessToken, err = at.SignedString([]byte(dotenvAcces))
 
-	// handle error
+	// handle err
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	// -------------- Creating Refresh Token ------------------ //
+	// instantiate the struct
+	rtClaims := jwt.MapClaims{}
 
-	// return the token
-	return token, nil
+	// add the claims to the 3rd party struct
+	rtClaims["refresh_uuid"] = td.RefreshUuid
+	rtClaims["user_id"] = userid
+	rtClaims["exp"] = td.RtExpires
+
+	// with hsa signiture and claims
+	rt := jwt.NewWithClaims(jwt.SigningMethodHS256, rtClaims)
+
+	// create the object with the secret key to the token
+	td.RefreshToken, err = rt.SignedString([]byte(dotenvRefresh))
+
+	// handle err
+	if err != nil {
+		return nil, err
+	}
+	return td, nil
 }
 
 func main() {
