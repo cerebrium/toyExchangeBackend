@@ -27,12 +27,23 @@ type User struct {
 }
 
 type TokenDetails struct {
-	AccessToken  string
-	RefreshToken string
-	AccessUuid   string
-	RefreshUuid  string
-	AtExpires    int64
-	RtExpires    int64
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	AccessUuid   string `json:"accessUuid"`
+	RefreshUuid  string `json:"refreshUuid"`
+	AtExpires    int64  `jdon:"atExpires"`
+	RtExpires    int64  `json:"rtExpires"`
+}
+
+type AccessToken struct {
+	AccessUuid string `json:"accessUuid"`
+	ID         uint64 `json:"_id"`
+	Expiration int64  `json:"expiration"`
+}
+type RefreshToken struct {
+	RefreshUuid string `json:"refreshUuid"`
+	ID          uint64 `json:"_id"`
+	Expiration  int64  `json:"expiration"`
 }
 
 // use godot package to load/read the .env file and
@@ -157,6 +168,87 @@ func CreateToken(userid uint64) (*TokenDetails, error) {
 	return td, nil
 }
 
+// function for saving tokens to the db
+func CreateAuth(userid uint64, td *TokenDetails) error {
+	// convert unix to utc
+	// at := time.Unix(td.AtExpires, 0)
+	// rt := time.Unix(td.RtExpires, 0)
+	// now := time.Now()
+
+	// make the token object to store
+	var mongoAccess = AccessToken{
+		AccessUuid: td.AccessUuid,
+		ID:         userid,
+		Expiration: td.AtExpires,
+	}
+
+	var mongoRefresh = RefreshToken{
+		RefreshUuid: td.RefreshUuid,
+		ID:          userid,
+		Expiration:  td.RtExpires,
+	}
+
+	// connect to database
+	collection, err := getMongoDbCollection("toyusers", "tokens")
+
+	// handle errors
+	if err != nil {
+		// retunr the error
+		return err
+	}
+
+	// filter to only get one key
+	filter := bson.M{
+		"$or": bson.A{
+			bson.M{"accessUuid": mongoAccess.AccessUuid},
+			bson.M{"refreshUuid": mongoRefresh.RefreshUuid},
+		},
+	}
+
+	// make the results be in the correct format
+	var results []bson.M
+
+	// find if the items exist
+	cur, err := collection.Find(context.Background(), filter)
+	defer cur.Close(context.Background())
+
+	// handle errors
+	if err != nil {
+		return err
+	}
+
+	// grab all of the results from the query
+	cur.All(context.Background(), &results)
+
+	// if the token does not exist
+	if results == nil {
+		// insert the access key:value
+		res, err := collection.InsertOne(context.Background(), mongoAccess)
+
+		// handle err
+		if err != nil {
+			return err
+		}
+
+		// insert the refresh key:value
+		resRef, err := collection.InsertOne(context.Background(), mongoRefresh)
+
+		// handle err
+		if err != nil {
+			return err
+		}
+
+		res = nil
+		resRef = nil
+
+		fmt.Println("", res, resRef)
+	} else {
+		// check for the times
+
+	}
+
+	return nil
+}
 func main() {
 	// load the env file
 	godotenv.Load()
