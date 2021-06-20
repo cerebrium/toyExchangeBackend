@@ -45,6 +45,9 @@ type RefreshToken struct {
 	ID          uint64 `json:"_id"`
 	Expiration  int64  `json:"expiration"`
 }
+type BearToken struct {
+	Authorization string `json:"Authorization"`
+}
 
 // use godot package to load/read the .env file and
 // return the value of the key
@@ -249,6 +252,7 @@ func CreateAuth(userid uint64, td *TokenDetails) error {
 
 	return nil
 }
+
 func main() {
 	// load the env file
 	godotenv.Load()
@@ -398,6 +402,36 @@ func main() {
 
 		// send the data
 		return c.Send(json)
+	})
+
+	// get users
+	app.Get("/users", func(c *fiber.Ctx) error {
+
+		// Peek returns header value for the given key.
+		bearToken := c.Request().Header.Peek("Authorization")
+
+		bearTokenObj := new(BearToken)
+		bearTokenObj.Authorization = string(bearToken)
+
+		jsonHeader, err := json.Marshal(bearTokenObj)
+
+		// error handling
+		if err != nil {
+			// if error return it
+			return c.Status(500).Send([]byte(err.Error()))
+		}
+
+		// instantiate the user class
+		var requestHeader BearToken
+
+		// convert json to readable format
+		json.Unmarshal(jsonHeader, &requestHeader)
+
+		// bearToken := new(BearToken)
+		fmt.Println("header: ", requestHeader)
+
+		// return the token
+		return c.Status(200).SendString("Work in progress: ")
 	})
 
 	// allow for heroku to set port
