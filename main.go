@@ -49,6 +49,10 @@ type BearToken struct {
 	Authorization string `json:"Authorization"`
 }
 
+type Access struct {
+	AccessToken string `json:"AccessToken"`
+}
+
 // use godot package to load/read the .env file and
 // return the value of the key
 func goDotEnvVariable(key string) string {
@@ -343,9 +347,36 @@ func main() {
 
 		// check for errors
 		if err != nil {
+			fmt.Println("error: ", err)
 			// if error return it
 			return c.Status(500).Send([]byte(err.Error()))
 		}
+
+		// save the token to db
+		// connect to the database
+		tcollection, err := getMongoDbCollection("toyusers", "tokens")
+
+		if err != nil {
+			fmt.Println("error: ", err)
+			// error in connection return error
+			return c.Status(500).Send([]byte(err.Error()))
+		}
+
+		var tokeaccess Access
+
+		// unmarshal it
+		json.Unmarshal([]byte(token.AccessToken), &tokeaccess)
+
+		fmt.Println("toke: ", tokeaccess)
+
+		// insert access token
+		res, err := tcollection.InsertOne(context.Background(), tokeaccess)
+		if err != nil {
+			fmt.Println("error: ", err)
+			return c.Status(500).Send([]byte(err.Error()))
+		}
+
+		fmt.Println("response: ", res)
 
 		// if token successfully generated return the token
 		json, err := json.Marshal(token)
