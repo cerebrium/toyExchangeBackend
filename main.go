@@ -45,12 +45,9 @@ type RefreshToken struct {
 	ID          uint64 `json:"_id"`
 	Expiration  int64  `json:"expiration"`
 }
-type BearToken struct {
-	Authorization string `json:"Authorization"`
-}
 
 type Access struct {
-	AccessToken string `json:"AccessToken"`
+	AccessToken string `json:"accesstoken"`
 }
 
 // use godot package to load/read the .env file and
@@ -357,26 +354,29 @@ func main() {
 		tcollection, err := getMongoDbCollection("toyusers", "tokens")
 
 		if err != nil {
-			fmt.Println("error: ", err)
+			fmt.Println("error line 360: ", err)
 			// error in connection return error
 			return c.Status(500).Send([]byte(err.Error()))
 		}
 
-		var tokeaccess Access
+		// create the token object
+		tokeaccess := &Access{
+			AccessToken: token.AccessToken,
+		}
+
+		// marshal into a json string
+		jtoke, _ := json.Marshal(tokeaccess)
 
 		// unmarshal it
-		json.Unmarshal([]byte(token.AccessToken), &tokeaccess)
-
-		fmt.Println("toke: ", tokeaccess)
+		json.Unmarshal([]byte(jtoke), &tokeaccess)
 
 		// insert access token
 		res, err := tcollection.InsertOne(context.Background(), tokeaccess)
 		if err != nil {
-			fmt.Println("error: ", err)
 			return c.Status(500).Send([]byte(err.Error()))
 		}
 
-		fmt.Println("response: ", res)
+		fmt.Println("response line 379: ", res)
 
 		// if token successfully generated return the token
 		json, err := json.Marshal(token)
@@ -437,14 +437,8 @@ func main() {
 
 	// get users
 	app.Get("/users", func(c *fiber.Ctx) error {
-
-		// Peek returns header value for the given key.
-		bearToken := c.Request().Header.Peek("Authorization")
-
-		bearTokenObj := new(BearToken)
-		bearTokenObj.Authorization = string(bearToken)
-
-		jsonHeader, err := json.Marshal(bearTokenObj)
+		// connect to the database
+		tcollection, err := getMongoDbCollection("toyusers", "tokens")
 
 		// error handling
 		if err != nil {
@@ -452,14 +446,11 @@ func main() {
 			return c.Status(500).Send([]byte(err.Error()))
 		}
 
-		// instantiate the user class
-		var requestHeader BearToken
+		// Peek returns header value for the given key.
+		bearToken := c.Request().Header.Peek("Authorization")
 
-		// convert json to readable format
-		json.Unmarshal(jsonHeader, &requestHeader)
-
-		// bearToken := new(BearToken)
-		fmt.Println("header: ", requestHeader)
+		// search through the tcollection and find the token
+		fmt.Println("bear token: ", bearToken, "tokens: ", tcollection)
 
 		// return the token
 		return c.Status(200).SendString("Work in progress: ")
