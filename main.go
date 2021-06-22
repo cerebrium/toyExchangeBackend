@@ -46,7 +46,16 @@ type RefreshToken struct {
 	Expiration  int64  `json:"expiration"`
 }
 
+type BearToken struct {
+	Authorization string `json:"authorization"`
+}
+
 type Access struct {
+	AccessToken string `json:"accesstoken"`
+}
+
+type BToken struct {
+	ID          uint64 `json:"_id"`
 	AccessToken string `json:"accesstoken"`
 }
 
@@ -254,6 +263,50 @@ func CreateAuth(userid uint64, td *TokenDetails) error {
 	return nil
 }
 
+// check the token against the db
+func CheckToken(bearToke string) bool {
+	// connect to the database
+	collection, err := getMongoDbCollection("toyusers", "tokens")
+	if err != nil {
+		fmt.Println(err.Error())
+		// error in connection return error
+		return false
+	}
+	// filter
+	var filter bson.M = bson.M{}
+
+	// make the results be in the correct format
+	var results []bson.M
+
+	// actually make the request using the cursor
+	cur, err := collection.Find(context.Background(), filter, options.Find())
+	defer cur.Close(context.Background())
+
+	// handle errors
+	if err != nil {
+		fmt.Println(err.Error())
+		return false
+	}
+
+	// grab all of the results from the quesry
+	cur.All(context.Background(), &results)
+
+	// check for matching token
+	for _, token := range results {
+		if token["accesstoken"] == bearToke {
+			return true
+		}
+	}
+
+	// handle errors
+	if results == nil {
+		return false
+	}
+
+	// default reject
+	return false
+}
+
 func main() {
 	// load the env file
 	godotenv.Load()
@@ -391,69 +444,53 @@ func main() {
 		return c.Status(200).Send(json)
 	})
 
-	// basic get route
-	app.Get("/", func(c *fiber.Ctx) error {
-		// connect to the database
-		collection, err := getMongoDbCollection("toyusers", "users")
-		if err != nil {
-			// error in connection return error
-			return c.Status(500).Send([]byte(err.Error()))
-		}
-
-		// filter
-		var filter bson.M = bson.M{}
-
-		// make the results be in the correct format
-		var results []bson.M
-
-		// actually make the request using the cursor
-		cur, err := collection.Find(context.Background(), filter, options.Find())
-		defer cur.Close(context.Background())
-
-		// handle errors
-		if err != nil {
-			return c.Status(500).Send([]byte(err.Error()))
-		}
-
-		// grab all of the results from the quesry
-		cur.All(context.Background(), &results)
-
-		// handle errors
-		if results == nil {
-			return c.Status(404).SendString("not Found")
-		}
-
-		// turn the data into json
-		json, err := json.Marshal(results)
-
-		// handle errors
-		if err != nil {
-			return c.Status(500).Send([]byte(err.Error()))
-		}
-
-		// send the data
-		return c.Send(json)
-	})
-
 	// get users
 	app.Get("/users", func(c *fiber.Ctx) error {
-		// connect to the database
-		tcollection, err := getMongoDbCollection("toyusers", "tokens")
+		// check if the token exists
+		if CheckToken(string(c.Request().Header.Peek("Authorization"))) {
+			// connect to the database
+			collection, err := getMongoDbCollection("toyusers", "users")
+			if err != nil {
+				// error in connection return error
+				return c.Status(500).Send([]byte(err.Error()))
+			}
 
-		// error handling
-		if err != nil {
-			// if error return it
-			return c.Status(500).Send([]byte(err.Error()))
+			// filter
+			var filter bson.M = bson.M{}
+
+			// make the results be in the correct format
+			var results []bson.M
+
+			// actually make the request using the cursor
+			cur, err := collection.Find(context.Background(), filter, options.Find())
+			defer cur.Close(context.Background())
+
+			// handle errors
+			if err != nil {
+				return c.Status(500).Send([]byte(err.Error()))
+			}
+
+			// grab all of the results from the quesry
+			cur.All(context.Background(), &results)
+
+			// handle errors
+			if results == nil {
+				return c.Status(404).SendString("not Found")
+			}
+
+			// turn the data into json
+			json, err := json.Marshal(results)
+
+			// handle errors
+			if err != nil {
+				return c.Status(500).Send([]byte(err.Error()))
+			}
+
+			// send the data
+			return c.Send(json)
+		} else {
+			return c.Status(500).SendString("user not authenticated")
 		}
-
-		// Peek returns header value for the given key.
-		bearToken := c.Request().Header.Peek("Authorization")
-
-		// search through the tcollection and find the token
-		fmt.Println("bear token: ", bearToken, "tokens: ", tcollection)
-
-		// return the token
-		return c.Status(200).SendString("Work in progress: ")
 	})
 
 	// allow for heroku to set port
