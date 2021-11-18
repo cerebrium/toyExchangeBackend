@@ -223,6 +223,10 @@ func CreateAuth(userid uint64, td *TokenDetails) error {
 
 	// find if the items exist
 	cur, err := collection.Find(context.Background(), filter)
+	if (err != nil) {
+		return err
+	}
+
 	defer cur.Close(context.Background())
 
 	// handle errors
@@ -251,13 +255,7 @@ func CreateAuth(userid uint64, td *TokenDetails) error {
 			return err
 		}
 
-		res = nil
-		resRef = nil
-
 		fmt.Println("", res, resRef)
-	} else {
-		// check for the times
-
 	}
 
 	return nil
@@ -268,6 +266,7 @@ func CheckToken(bearToke string) bool {
 	// connect to the database
 	collection, err := getMongoDbCollection("toyusers", "tokens")
 	if err != nil {
+		fmt.Println("the error for connection is not nil")
 		fmt.Println(err.Error())
 		// error in connection return error
 		return false
@@ -280,6 +279,13 @@ func CheckToken(bearToke string) bool {
 
 	// actually make the request using the cursor
 	cur, err := collection.Find(context.Background(), filter, options.Find())
+
+	if err != nil {
+		// error in connection return error
+		fmt.Println("the error for cursor is not nil")
+		fmt.Println(err.Error())
+		return false
+	}
 	defer cur.Close(context.Background())
 
 	// handle errors
@@ -351,6 +357,10 @@ func main() {
 
 		// actually make the request using the cursor
 		cur, err := collection.Find(context.Background(), filter, options.Find())
+		if (err != nil) {
+			// error in connection return error
+			return c.Status(500).Send([]byte(err.Error()))
+		}
 		defer cur.Close(context.Background())
 
 		// handle errors
@@ -447,7 +457,7 @@ func main() {
 	// get users
 	app.Get("/users", func(c *fiber.Ctx) error {
 		// check if the token exists
-		if CheckToken(string(c.Request().Header.Peek("Authorization"))) {
+		// if CheckToken(string(c.Request().Header.Peek("Authorization"))) {
 			// connect to the database
 			collection, err := getMongoDbCollection("toyusers", "users")
 			if err != nil {
@@ -463,6 +473,11 @@ func main() {
 
 			// actually make the request using the cursor
 			cur, err := collection.Find(context.Background(), filter, options.Find())
+			if (err != nil) {
+				// error in connection return error
+				return c.Status(500).Send([]byte(err.Error()))
+			}
+
 			defer cur.Close(context.Background())
 
 			// handle errors
@@ -488,11 +503,23 @@ func main() {
 
 			// send the data
 			return c.Send(json)
-		} else {
-			return c.Status(500).SendString("user not authenticated")
-		}
+		// } else {
+		// 	return c.Status(500).SendString("user not authenticated")
+		// }
 	})
 
+	// // crypto request
+	app.Get("/cryptodata", func(c *fiber.Ctx) error {
+		data, err := getCryptoData()
+
+		if (err != nil) {
+			return c.Status(500).Send([]byte(err.Error()))
+		}
+
+
+		return c.JSON(data)
+	})
+	
 	// allow for heroku to set port
 	port := ":" + os.Getenv("PORT")
 
